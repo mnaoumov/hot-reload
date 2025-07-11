@@ -1,11 +1,11 @@
-import { Plugin, Notice, debounce, Platform, requireApiVersion, App, Component, FileSystemAdapter } from "obsidian";
+import { Plugin, Notice, debounce, Platform, requireApiVersion, App, Component, FileSystemAdapter, PluginSettingTab, Setting } from "obsidian";
 import * as o from "obsidian"
 import { around } from "monkey-around"
 
 const watchNeeded = !Platform.isMacOS && !Platform.isWin;
 
 export default class HotReload extends Plugin {
-
+    settings: HotReloadSettings;
     statCache = new Map<string, o.Stat>();  // path -> Stat
     run = taskQueue()
 
@@ -20,6 +20,7 @@ export default class HotReload extends Plugin {
 
     onload() {
         this.app.workspace.onLayoutReady(async () => {
+            await this.loadSettings();
             await this.getPluginNames();
             this.addCommand({
                 id: "scan-for-changes",
@@ -29,6 +30,15 @@ export default class HotReload extends Plugin {
             this.registerEvent( this.app.vault.on("raw", this.onFileChange));
             this.watch(this.app.plugins.getPluginFolder());
         });
+        this.addSettingTab(new HotReloadSettingTab(this));
+    }
+
+    async loadSettings() {
+        this.settings = Object.assign(new HotReloadSettings(), await this.loadData());
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
     }
 
     watch(path: string) {
@@ -108,7 +118,7 @@ export default class HotReload extends Plugin {
         // Don't reload disabled plugins
         if (!plugins.enabledPlugins.has(plugin)) return;
 
-        this.settingReloader.onPluginDisable(plugin);
+        if (this.settings.shouldReopenActiveSettingsTab) this.settingReloader.onPluginDisable(plugin);
 
         await plugins.disablePlugin(plugin);
         console.debug("disabled", plugin);
@@ -126,6 +136,34 @@ export default class HotReload extends Plugin {
         }
         console.debug("enabled", plugin);
         new Notice(`Plugin "${plugin}" has been reloaded`);
+    }
+}
+
+class HotReloadSettings {
+    shouldReopenActiveSettingsTab = true;
+}
+
+class HotReloadSettingTab extends PluginSettingTab {
+    plugin: HotReload;
+
+    constructor(plugin: HotReload) {
+        super(plugin.app, plugin);
+        this.plugin = plugin;
+    }
+
+    display() {
+        this.containerEl.empty();
+
+        new Setting(this.containerEl)
+            .setName("Should reopen active settings tab")
+            .setDesc("Whether to reopen the active settings tab after reloading the plugin.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.shouldReopenActiveSettingsTab)
+                .onChange(async (value) => {
+                    this.plugin.settings.shouldReopenActiveSettingsTab = value
+                    await this.plugin.saveSettings()
+                })
+            )
     }
 }
 
