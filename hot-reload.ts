@@ -1,10 +1,10 @@
-import { Plugin, Notice, debounce, Platform, requireApiVersion, App, PluginSettingTab, Setting } from "obsidian";
+import { Plugin, Notice, debounce, Platform, requireApiVersion, App } from "obsidian";
 import { around } from "monkey-around"
 
 const watchNeeded = !Platform.isMacOS && !Platform.isWin;
 
 export default class HotReload extends Plugin {
-    settings: HotReloadSettings;
+
     statCache = new Map();  // path -> Stat
     run = taskQueue()
 
@@ -22,20 +22,10 @@ export default class HotReload extends Plugin {
             name: "Check plugins for changes and reload them",
             callback: this.reindexPlugins
         })
-        this.app.workspace.onLayoutReady(async () => {
-            await this.loadSettings();
+        this.app.workspace.onLayoutReady(() => {
             this.registerEvent( this.app.vault.on("raw", this.onFileChange));
             this.watch(this.app.plugins.getPluginFolder());
         });
-        this.addSettingTab(new HotReloadSettingTab(this));
-    }
-
-    async loadSettings() {
-        this.settings = Object.assign(new HotReloadSettings(), await this.loadData());
-    }
-
-    async saveSettings() {
-        await this.saveData(this.settings);
     }
 
     async watch(path: string) {
@@ -138,7 +128,7 @@ export default class HotReload extends Plugin {
         const uninstall = preventSourcemapStripping(this.app, plugin)
         try {
             await plugins.enablePlugin(plugin);
-            if (isSettingTabActive && this.app.setting.containerEl.isShown() && this.app.setting.activeTab === null && this.settings.shouldReopenActiveSettingsTab) {
+            if (isSettingTabActive && this.app.setting.containerEl.isShown() && this.app.setting.activeTab === null) {
                 const settingTab = this.app.setting.openTabById(plugin);
                 if (settingTab) {
                     settingTab.containerEl.scrollTo({ left: settingTabScrollLeft, top: settingTabScrollTop });
@@ -151,34 +141,6 @@ export default class HotReload extends Plugin {
         }
         console.debug("enabled", plugin);
         new Notice(`Plugin "${plugin}" has been reloaded`);
-    }
-}
-
-class HotReloadSettings {
-    shouldReopenActiveSettingsTab = true;
-}
-
-class HotReloadSettingTab extends PluginSettingTab {
-    plugin: HotReload;
-
-    constructor(plugin: HotReload) {
-        super(plugin.app, plugin);
-        this.plugin = plugin;
-    }
-
-    display() {
-        this.containerEl.empty();
-
-        new Setting(this.containerEl)
-            .setName("Should reopen active settings tab")
-            .setDesc("Whether to reopen the active settings tab after reloading the plugin.")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.shouldReopenActiveSettingsTab)
-                .onChange(async (value) => {
-                    this.plugin.settings.shouldReopenActiveSettingsTab = value
-                    await this.plugin.saveSettings()
-                })
-            )
     }
 }
 
