@@ -109,6 +109,16 @@ export default class HotReload extends Plugin {
         // Don't reload disabled plugins
         if (!plugins.enabledPlugins.has(plugin)) return;
 
+        let settingTabScrollTop = 0;
+        let settingTabScrollLeft = 0;
+        let isSettingTabActive = false;
+
+        if (this.app.setting.activeTab?.id === plugin) {
+            settingTabScrollTop = this.app.setting.activeTab.containerEl.scrollTop;
+            settingTabScrollLeft = this.app.setting.activeTab.containerEl.scrollLeft;
+            isSettingTabActive = true;
+        }
+
         await plugins.disablePlugin(plugin);
         console.debug("disabled", plugin);
 
@@ -118,6 +128,12 @@ export default class HotReload extends Plugin {
         const uninstall = preventSourcemapStripping(this.app, plugin)
         try {
             await plugins.enablePlugin(plugin);
+            if (isSettingTabActive) {
+                const settingTab = this.app.setting.openTabById(plugin);
+                if (settingTab) {
+                    settingTab.containerEl.scrollTo({ left: settingTabScrollLeft, top: settingTabScrollTop });
+                }
+            }
         } finally {
             // Restore previous setting
             if (oldDebug === null) localStorage.removeItem("debug-plugin"); else localStorage.setItem("debug-plugin", oldDebug);
@@ -168,6 +184,10 @@ declare module "obsidian" {
             enablePlugin(plugin: string): Promise<void>
             disablePlugin(plugin: string): Promise<void>
             enabledPlugins: Set<string>
+        }
+        setting: {
+            activeTab: SettingTab & { id: string } | null
+            openTabById(id: string): SettingTab | null
         }
     }
 }
