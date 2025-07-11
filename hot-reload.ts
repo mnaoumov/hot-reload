@@ -149,13 +149,20 @@ export default class HotReload extends Plugin {
             if (oldDebug === null) localStorage.removeItem("debug-plugin"); else localStorage.setItem("debug-plugin", oldDebug);
             uninstall?.()
         }
-        console.debug("enabled", plugin);
-        new Notice(`Plugin "${plugin}" has been reloaded`);
+        this.showNotice(`Plugin "${plugin}" has been reloaded`);
+    }
+
+    showNotice(message: string) {
+        console.debug(message);
+        if (this.settings.shouldShowReloadNotice) {
+            new Notice(message);
+        }
     }
 }
 
 class HotReloadSettings {
     shouldReopenActiveSettingsTab = true;
+    shouldShowReloadNotice = true;
 }
 
 class HotReloadSettingTab extends PluginSettingTab {
@@ -178,7 +185,18 @@ class HotReloadSettingTab extends PluginSettingTab {
                     this.plugin.settings.shouldReopenActiveSettingsTab = value
                     await this.plugin.saveSettings()
                 })
-            )
+            );
+
+        new Setting(this.containerEl)
+            .setName("Should show reload notice")
+            .setDesc("Whether to show a notice after reloading the plugin.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.shouldShowReloadNotice)
+                .onChange(async (value) => {
+                    this.plugin.settings.shouldShowReloadNotice = value
+                    await this.plugin.saveSettings()
+                })
+            );
     }
 }
 
