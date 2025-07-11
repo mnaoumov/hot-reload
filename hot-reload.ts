@@ -128,7 +128,7 @@ export default class HotReload extends Plugin {
         const uninstall = preventSourcemapStripping(this.app, plugin)
         try {
             await plugins.enablePlugin(plugin);
-            if (isSettingTabActive) {
+            if (isSettingTabActive && this.app.setting.containerEl.isShown() && this.app.setting.activeTab === null) {
                 const settingTab = this.app.setting.openTabById(plugin);
                 if (settingTab) {
                     settingTab.containerEl.scrollTo({ left: settingTabScrollLeft, top: settingTabScrollTop });
@@ -187,6 +187,7 @@ declare module "obsidian" {
         }
         setting: {
             activeTab: SettingTab & { id: string } | null
+            containerEl: HTMLElement
             openTabById(id: string): SettingTab | null
         }
     }
