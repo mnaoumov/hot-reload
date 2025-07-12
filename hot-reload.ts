@@ -1,10 +1,18 @@
-import { Plugin, Notice, debounce, Platform, requireApiVersion, App } from "obsidian";
+import { Plugin, Notice, debounce, Platform, requireApiVersion, App, type SettingTab } from "obsidian";
 import { around } from "monkey-around"
 
 const watchNeeded = !Platform.isMacOS && !Platform.isWin;
 
-export default class HotReload extends Plugin {
+type AddSettingTabFn = Plugin["addSettingTab"];
 
+interface LastPluginSettingTabInfo {
+    id: string;
+    left: number;
+    top: number;
+}
+
+export default class HotReload extends Plugin {
+    lastPluginSettingTabInfo: LastPluginSettingTabInfo | null = null;
     statCache = new Map();  // path -> Stat
     run = taskQueue()
 
@@ -22,10 +30,32 @@ export default class HotReload extends Plugin {
             name: "Check plugins for changes and reload them",
             callback: this.reindexPlugins
         })
+        const that = this;
         this.app.workspace.onLayoutReady(() => {
             this.registerEvent( this.app.vault.on("raw", this.onFileChange));
             this.watch(this.app.plugins.getPluginFolder());
+            this.register(around(Plugin.prototype, {
+                addSettingTab: (next) => {
+                    return function addSettingTabPatched(this: Plugin, settingTab: SettingTab) {
+                        return that.addSettingTabPatched(next, this, settingTab);
+                    }
+                }
+            }));
         });
+    }
+
+    addSettingTabPatched(next: AddSettingTabFn, plugin: Plugin, settingTab: SettingTab) {
+        next.call(plugin, settingTab);
+
+        window.setTimeout(() => {
+            if (!this.lastPluginSettingTabInfo || this.lastPluginSettingTabInfo.id !== settingTab.id || !this.app.setting.containerEl.isShown() || this.app.setting.activeTab) {
+                return;
+            }
+
+            this.app.setting.openTab(settingTab);
+            settingTab.containerEl.scrollTo(this.lastPluginSettingTabInfo);
+            this.lastPluginSettingTabInfo = null;
+        })
     }
 
     async watch(path: string) {
@@ -109,14 +139,13 @@ export default class HotReload extends Plugin {
         // Don't reload disabled plugins
         if (!plugins.enabledPlugins.has(plugin)) return;
 
-        let settingTabScrollTop = 0;
-        let settingTabScrollLeft = 0;
-        let isSettingTabActive = false;
-
         if (this.app.setting.activeTab?.id === plugin) {
-            settingTabScrollTop = this.app.setting.activeTab.containerEl.scrollTop;
-            settingTabScrollLeft = this.app.setting.activeTab.containerEl.scrollLeft;
-            isSettingTabActive = true;
+            const containerEl = this.app.setting.activeTab.containerEl;
+            this.lastPluginSettingTabInfo = {
+                id: plugin,
+                left: containerEl.scrollLeft,
+                top: containerEl.scrollTop,
+            }
         }
 
         await plugins.disablePlugin(plugin);
@@ -128,12 +157,6 @@ export default class HotReload extends Plugin {
         const uninstall = preventSourcemapStripping(this.app, plugin)
         try {
             await plugins.enablePlugin(plugin);
-            if (isSettingTabActive && this.app.setting.containerEl.isShown() && this.app.setting.activeTab === null) {
-                const settingTab = this.app.setting.openTabById(plugin);
-                if (settingTab) {
-                    settingTab.containerEl.scrollTo({ left: settingTabScrollLeft, top: settingTabScrollTop });
-                }
-            }
         } finally {
             // Restore previous setting
             if (oldDebug === null) localStorage.removeItem("debug-plugin"); else localStorage.setItem("debug-plugin", oldDebug);
@@ -186,9 +209,12 @@ declare module "obsidian" {
             enabledPlugins: Set<string>
         }
         setting: {
-            activeTab: SettingTab & { id: string } | null
+            activeTab: SettingTab | null
             containerEl: HTMLElement
-            openTabById(id: string): SettingTab | null
+            openTab(tab: SettingTab): void
         }
+    }
+    interface SettingTab {
+        id: string;
     }
 }
